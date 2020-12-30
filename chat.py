@@ -1,7 +1,40 @@
-#!/usr/bin/env python3
+from aiohttp import web, WSMsgType
+import json
 
-from aiohttp import web
-# TODO
+
+class WebSocket(web.View):
+    async def get(self):
+        ws = web.WebSocketResponse()
+        await ws.prepare(self.request)
+        self.id = ''
+        async for msg in ws:
+            if msg.type == WSMsgType.TEXT:
+                if msg.data == 'ping':
+                    await ws.send_str('pong')
+                else:
+                    mes = json.loads(msg.data)
+                    if mes['mtype'] == 'INIT':
+                        if 'websockets' not in self.request.app:
+                            self.request.app['websockets'] = {}
+                        for _ws in self.request.app['websockets'].values():
+                            await _ws.send_json(
+                                    {'mtype': 'USER_ENTER', 'id': mes['id']})
+                        self.request.app['websockets'][mes['id']] = ws
+                        self.id = mes['id']
+
+                    elif mes['mtype'] == 'TEXT':
+                        if not mes['to']:
+                            for _ws in self.request.app['websockets']:
+                                if _ws != mes['id']:
+                                    await self.request.app['websockets'][_ws].send_json({'mtype': 'MSG', 'id': mes['id'], 'text': mes['text']})
+                        elif mes['to']:
+                            await self.request.app['websockets'][mes['to']].send_json({'mtype': 'DM', 'id': mes['id'], 'text': mes['text']})
+
+        self.request.app['websockets'].pop(self.id)
+        for _ws in self.request.app['websockets'].values():
+            await _ws.send_json(
+                    {'mtype': 'USER_LEAVE', 'id': self.id})
+        return ws
 
 
 class WSChat:
@@ -10,17 +43,15 @@ class WSChat:
         self.port = port
         self.conns = {}
 
-    async def main_page(self, request):
+    @staticmethod
+    async def main_page(request):
         return web.FileResponse('./index.html')
-
-    # TODO
 
     def run(self):
         app = web.Application()
 
         app.router.add_get('/', self.main_page)
-
-        # TODO
+        app.router.add_get('/chat', WebSocket)
 
         web.run_app(app, host=self.host, port=self.port)
 

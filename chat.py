@@ -29,7 +29,7 @@ class WebSocket(web.View):
 										_ws].send_json(
 											{'mtype': 'MSG', 'id': mes['id'],
 											 'text': mes['text']})
-						elif mes['to']:
+						elif mes['to'] and mes['to'] in self.request.app['websockets']:
 							await self.request.app['websockets'][
 								mes['to']].send_json(
 									{'mtype': 'DM', 'id': mes['id'],
